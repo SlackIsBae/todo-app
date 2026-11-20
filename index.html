@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Todo</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:#f0f2f5;font-family:system-ui,sans-serif;display:flex;justify-content:center;padding:24px 12px}
+main{width:100%;max-width:480px;background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.1);padding:20px;align-self:flex-start}
+h1{margin:0 0 16px;font-size:1.5rem}
+form{display:flex;gap:8px}
+input[type=text]{flex:1;min-width:0;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:1rem}
+button{padding:10px 14px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:1rem;cursor:pointer}
+ul{list-style:none;margin:16px 0 0;padding:0}
+li{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #eee}
+li span{flex:1;word-break:break-word}
+li.done span{text-decoration:line-through;color:#999}
+li button{background:#ef4444;padding:4px 10px}
+input[type=checkbox]{width:18px;height:18px}
+#count{margin-top:12px;color:#666;font-size:.9rem}
+</style>
+</head>
+<body>
+<main>
+<h1>Todo</h1>
+<form id="f"><input type="text" id="t" placeholder="What needs doing?" autocomplete="off"><button>Add</button></form>
+<ul id="list"></ul>
+<div id="count"></div>
+</main>
+<script>
+var KEY="todos",tasks=[];
+try{tasks=JSON.parse(localStorage.getItem(KEY))||[]}catch(e){}
+var list=document.getElementById("list"),input=document.getElementById("t"),count=document.getElementById("count");
+function save(){localStorage.setItem(KEY,JSON.stringify(tasks))}
+function render(){
+  list.innerHTML="";
+  tasks.forEach(function(k,i){
+    var li=document.createElement("li");if(k.done)li.className="done";
+    var c=document.createElement("input");c.type="checkbox";c.checked=k.done;
+    c.onchange=function(){k.done=c.checked;save();render()};
+    var s=document.createElement("span");s.textContent=k.text;
+    var d=document.createElement("button");d.textContent="Delete";
+    d.onclick=function(){tasks.splice(i,1);save();render()};
+    li.append(c,s,d);list.appendChild(li);
+  });
+  var n=tasks.filter(function(k){return !k.done}).length;
+  count.textContent=n+(n===1?" item":" items")+" left";
+}
+document.getElementById("f").onsubmit=function(e){
+  e.preventDefault();
+  var v=input.value.trim();if(!v)return;
+  tasks.push({text:v,done:false});input.value="";save();render();
+};
+render();
+</script>
+</body>
+</html>
