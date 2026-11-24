@@ -70,13 +70,21 @@ footer{display:flex;justify-content:space-between;align-items:center;margin-top:
 #clear:hover{background:#eef2ff}
 @keyframes in{from{opacity:0;transform:translateY(-8px)}}
 @keyframes out{to{opacity:0;transform:translateX(24px)}}
+.chip{display:inline-flex;align-items:center;gap:2px;max-width:100%;padding:2px 9px;border-radius:999px;font-size:.78rem;font-weight:600;line-height:1.5;word-break:break-word}
+.chip button{background:transparent;color:inherit;padding:0 3px;font-size:1rem;line-height:1;border-radius:50%;opacity:.7}
+.chip button:hover{background:rgba(0,0,0,.12);opacity:1}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
+.tagbox{flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 8px;border:2px solid #e5e7eb;border-radius:12px;background:#fff;min-width:0}
+.tagbox:focus-within{border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,.2)}
+.tagbox input{flex:1 1 120px;min-width:0;border:0;padding:4px;font:inherit;font-size:.9rem;background:transparent}
+.tagbox input:focus{outline:0}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
 <main>
 <h1>✅ My Todos</h1>
-<form id="f"><input type="text" id="t" placeholder="What needs doing?" autocomplete="off" aria-label="New todo"><input type="date" id="d" aria-label="Due date (optional)"><select id="p" aria-label="Priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select><button>Add</button></form>
+<form id="f"><input type="text" id="t" placeholder="What needs doing?" autocomplete="off" aria-label="New todo"><input type="date" id="d" aria-label="Due date (optional)"><select id="p" aria-label="Priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select><div id="tb"></div><button>Add</button></form>
 <ul id="list"></ul>
 <footer><span id="count"></span><button type="button" id="clear">Clear completed</button></footer>
 </main>
@@ -85,11 +93,61 @@ var KEY="todos",tasks=[],open={},focusSel=null;
 try{tasks=JSON.parse(localStorage.getItem(KEY))||[]}catch(e){}
 if(!Array.isArray(tasks))tasks=[];
 var seq=0;
+function normTags(a){
+  var seen={},out=[];
+  (Array.isArray(a)?a:[]).forEach(function(t){
+    if(typeof t!=="string")return;
+    t=t.replace(/\s+/g," ").trim().slice(0,30);
+    var l=t.toLowerCase();if(!t||seen[l])return;seen[l]=1;out.push(t);
+  });
+  return out;
+}
+function tagColor(t){
+  var h=5381,l=t.toLowerCase();
+  for(var i=0;i<l.length;i++)h=((h<<5)+h+l.charCodeAt(i))>>>0;
+  h=h%360;
+  return{bg:"hsl("+h+",75%,90%)",fg:"hsl("+h+",65%,22%)"};
+}
+function chip(t,onx){
+  var c=tagColor(t),e=el("span","chip",t);
+  e.style.background=c.bg;e.style.color=c.fg;
+  if(onx){var b=el("button","","×");b.type="button";b.setAttribute("aria-label","Remove tag "+t);b.onclick=onx;e.appendChild(b)}
+  return e;
+}
+function allTags(){
+  var seen={},out=[];
+  tasks.forEach(function(k){k.tags.forEach(function(t){var l=t.toLowerCase();if(!seen[l]){seen[l]=1;out.push(t)}})});
+  return out.sort(function(a,b){return a.toLowerCase()<b.toLowerCase()?-1:1});
+}
+function tagEditor(init){
+  var tags=init.slice(),box=el("div","tagbox"),inp=el("input");
+  inp.type="text";inp.placeholder="Add tag…";inp.setAttribute("aria-label","Add tag. Enter or comma adds it.");
+  inp.setAttribute("list","taglist");inp.autocomplete="off";
+  function draw(){
+    Array.prototype.slice.call(box.querySelectorAll(".chip")).forEach(function(c){c.remove()});
+    tags.forEach(function(t,i){box.insertBefore(chip(t,function(){inp.focus();tags.splice(i,1);draw()}),inp)});
+    if(!inp.parentNode)box.appendChild(inp);
+  }
+  function commit(){
+    var v=inp.value;inp.value="";
+    tags=normTags(tags.concat(v.split(",")));draw();
+  }
+  inp.onkeydown=function(e){
+    if(e.key==="Enter"||e.key===","){e.preventDefault();e.stopPropagation();commit()}
+    else if(e.key==="Backspace"&&!inp.value&&tags.length){tags.pop();draw()}
+  };
+  inp.oninput=function(){if(inp.value.indexOf(",")>-1)commit()};
+  draw();
+  return{box:box,get:function(){return normTags(tags.concat(inp.value.split(",")))},reset:function(){tags=[];inp.value="";draw()}};
+}
+var dl=document.createElement("datalist");dl.id="taglist";document.body.appendChild(dl);
+var newTags=tagEditor([]);document.getElementById("tb").replaceWith(newTags.box);
 tasks=tasks.filter(function(k){return k&&typeof k.text==="string"}).map(function(k){
   return{id:k.id||(Date.now().toString(36)+(seq++)),text:k.text,done:!!k.done,
     due:/^\d{4}-\d\d-\d\d$/.test(k.due||"")?k.due:"",
     pri:["low","medium","high"].indexOf(k.pri)>-1?k.pri:"medium",
     notes:typeof k.notes==="string"?k.notes:"",
+    tags:normTags(k.tags),
     subs:Array.isArray(k.subs)?k.subs.filter(function(x){return x&&typeof x.text==="string"}).map(function(x){return{text:x.text,done:!!x.done}}):[]};
 });
 var list=document.getElementById("list"),input=document.getElementById("t"),dIn=document.getElementById("d"),pIn=document.getElementById("p"),count=document.getElementById("count"),clear=document.getElementById("clear");
@@ -114,11 +172,12 @@ function startEdit(k,main){
   p.setAttribute("aria-label","Priority");
   ["low","medium","high"].forEach(function(v){var o=el("option",null,v[0].toUpperCase()+v.slice(1));o.value=v;p.appendChild(o)});
   p.value=k.pri;
-  r.append(t,d,p);main.replaceChildren(r);t.focus();t.select();
+  var te=tagEditor(k.tags);
+  r.append(t,d,p,te.box);main.replaceChildren(r);t.focus();t.select();
   var fin=false;
   function done(ok){
     if(fin)return;fin=true;
-    if(ok){var v=t.value.trim();if(v)k.text=v;k.due=d.value;k.pri=p.value;save()}
+    if(ok){var v=t.value.trim();if(v)k.text=v;k.due=d.value;k.pri=p.value;k.tags=te.get();save()}
     focusSel='[data-id="'+k.id+'"] .ed';render();
   }
   r.onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();done(true)}else if(e.key==="Escape"){e.preventDefault();done(false)}};
@@ -172,6 +231,7 @@ function render(){
       b.append(dn+"/"+k.subs.length);b.setAttribute("aria-label",dn+" of "+k.subs.length+" subtasks done");m.appendChild(b);
     }
     main.append(s,m);
+    if(k.tags.length){var tg=el("div","tags");k.tags.forEach(function(t){tg.appendChild(chip(t))});main.appendChild(tg)}
     var ed=el("button","ib ed","Edit");ed.type="button";ed.setAttribute("aria-label","Edit "+k.text);ed.onclick=function(){startEdit(k,main)};
     var dt=el("button","ib","Details");dt.type="button";dt.setAttribute("aria-label","Details for "+k.text);
     dt.setAttribute("aria-expanded",open[k.id]?"true":"false");dt.setAttribute("aria-controls","pn-"+k.id);
@@ -182,6 +242,7 @@ function render(){
     if(open[k.id])li.appendChild(panel(k));
     list.appendChild(li);
   });
+  dl.replaceChildren();allTags().forEach(function(t){var o=document.createElement("option");o.value=t;dl.appendChild(o)});
   var n=tasks.filter(function(k){return !k.done}).length;
   count.textContent=n+(n===1?" item":" items")+" left";
   clear.hidden=n===tasks.length;
@@ -191,8 +252,8 @@ clear.onclick=function(){tasks=tasks.filter(function(k){return !k.done});save();
 document.getElementById("f").onsubmit=function(e){
   e.preventDefault();
   var v=input.value.trim();if(!v)return;
-  tasks.push({id:Date.now().toString(36)+(seq++),text:v,done:false,due:dIn.value,pri:pIn.value,notes:"",subs:[]});
-  input.value="";dIn.value="";pIn.value="medium";save();render();
+  tasks.push({id:Date.now().toString(36)+(seq++),text:v,done:false,due:dIn.value,pri:pIn.value,tags:newTags.get(),notes:"",subs:[]});
+  input.value="";dIn.value="";pIn.value="medium";newTags.reset();save();render();
 };
 render();
 </script>
